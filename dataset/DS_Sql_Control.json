@@ -1,0 +1,60 @@
+{
+	"name": "DS_Sql_Control",
+	"properties": {
+		"linkedServiceName": {
+			"referenceName": "LS_SqlServer_Source",
+			"type": "LinkedServiceReference"
+		},
+		"folder": {
+			"name": "Source/SQL"
+		},
+		"annotations": [
+			"flowx-demo",
+			"control-table"
+		],
+		"type": "AzureSqlTable",
+		"schema": [
+			{
+				"name": "control_id",
+				"type": "int",
+				"precision": 10,
+				"scale": 0
+			},
+			{
+				"name": "source_schema",
+				"type": "nvarchar"
+			},
+			{
+				"name": "source_table",
+				"type": "nvarchar"
+			},
+			{
+				"name": "target_table",
+				"type": "nvarchar"
+			},
+			{
+				"name": "load_type",
+				"type": "nvarchar"
+			},
+			{
+				"name": "watermark_column",
+				"type": "nvarchar"
+			},
+			{
+				"name": "is_active",
+				"type": "bit"
+			},
+			{
+				"name": "load_priority",
+				"type": "int",
+				"precision": 10,
+				"scale": 0
+			}
+		],
+		"typeProperties": {
+			"schema": "dbo",
+			"table": "MigrationControl"
+		}
+	},
+	"type": "Microsoft.DataFactory/factories/datasets"
+}

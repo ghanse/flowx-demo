@@ -1,0 +1,35 @@
+{
+	"name": "TR_Daily_0200",
+	"properties": {
+		"annotations": [],
+		"runtimeState": "Stopped",
+		"pipelines": [
+			{
+				"pipelineReference": {
+					"referenceName": "PL_Ingest_SqlServer_To_Lakehouse",
+					"type": "PipelineReference"
+				},
+				"parameters": {
+					"p_run_date": "@formatDateTime(trigger().scheduledTime, 'yyyy-MM-dd')"
+				}
+			}
+		],
+		"type": "ScheduleTrigger",
+		"typeProperties": {
+			"recurrence": {
+				"frequency": "Day",
+				"interval": 1,
+				"startTime": "2026-09-22T02:00:00Z",
+				"timeZone": "UTC",
+				"schedule": {
+					"minutes": [
+						0
+					],
+					"hours": [
+						2
+					]
+				}
+			}
+		}
+	}
+}
