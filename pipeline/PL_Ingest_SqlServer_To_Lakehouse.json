@@ -1,0 +1,351 @@
+{
+	"name": "PL_Ingest_SqlServer_To_Lakehouse",
+	"properties": {
+		"description": "Metadata-driven ingestion: Lookup a SQL Server control table, ForEach active table, Copy SQL -> ADLS bronze parquet, then branch on load type to a Databricks notebook. Web activities notify on failure. Migration source for the flowx 'rearchitecture in flight' demo.",
+		"activities": [
+			{
+				"name": "LKP_GetActiveTables",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.00:10:00",
+					"retry": 2,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "AzureSqlSource",
+						"sqlReaderQuery": {
+							"value": "@concat('SELECT source_schema, source_table, target_table, load_type, watermark_column FROM ', pipeline().parameters.p_control_schema, '.', pipeline().parameters.p_control_table, ' WHERE is_active = 1 ORDER BY load_priority')",
+							"type": "Expression"
+						},
+						"queryTimeout": "00:05:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "DS_Sql_Control",
+						"type": "DatasetReference"
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "FE_MigrateEachTable",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "LKP_GetActiveTables",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('LKP_GetActiveTables').output.value",
+						"type": "Expression"
+					},
+					"isSequential": false,
+					"batchCount": 4,
+					"activities": [
+						{
+							"name": "CP_SqlToBronze",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.01:00:00",
+								"retry": 2,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "AzureSqlSource",
+									"sqlReaderQuery": {
+										"value": "@concat('SELECT * FROM ', item().source_schema, '.', item().source_table)",
+										"type": "Expression"
+									},
+									"queryTimeout": "00:30:00",
+									"partitionOption": "None"
+								},
+								"sink": {
+									"type": "ParquetSink",
+									"storeSettings": {
+										"type": "AzureBlobFSWriteSettings"
+									},
+									"formatSettings": {
+										"type": "ParquetWriteSettings"
+									}
+								},
+								"enableStaging": false
+							},
+							"inputs": [
+								{
+									"referenceName": "DS_Sql_Source_Table",
+									"type": "DatasetReference",
+									"parameters": {
+										"schemaName": "@item().source_schema",
+										"tableName": "@item().source_table"
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "DS_Adls_Parquet_Sink",
+									"type": "DatasetReference",
+									"parameters": {
+										"folderPath": "@concat(pipeline().parameters.p_landing_container, '/', item().target_table, '/', pipeline().parameters.p_run_date)",
+										"fileName": "@concat(item().source_table, '.parquet')"
+									}
+								}
+							]
+						},
+						{
+							"name": "IF_LoadType",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "CP_SqlToBronze",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@equals(item().load_type, 'incremental')",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "NB_OverwriteFull",
+										"type": "DatabricksNotebook",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.01:00:00",
+											"retry": 1,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"notebookPath": {
+												"value": "@concat(pipeline().parameters.p_databricks_repo, '/overwrite_full')",
+												"type": "Expression"
+											},
+											"baseParameters": {
+												"target_table": {
+													"value": "@item().target_table",
+													"type": "Expression"
+												},
+												"run_date": {
+													"value": "@pipeline().parameters.p_run_date",
+													"type": "Expression"
+												}
+											}
+										},
+										"linkedServiceName": {
+											"referenceName": "LS_AzureDatabricks",
+											"type": "LinkedServiceReference"
+										}
+									}
+								],
+								"ifTrueActivities": [
+									{
+										"name": "NB_MergeIncremental",
+										"type": "DatabricksNotebook",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.01:00:00",
+											"retry": 1,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"notebookPath": {
+												"value": "@concat(pipeline().parameters.p_databricks_repo, '/merge_incremental')",
+												"type": "Expression"
+											},
+											"baseParameters": {
+												"target_table": {
+													"value": "@item().target_table",
+													"type": "Expression"
+												},
+												"watermark_column": {
+													"value": "@item().watermark_column",
+													"type": "Expression"
+												},
+												"run_date": {
+													"value": "@pipeline().parameters.p_run_date",
+													"type": "Expression"
+												}
+											}
+										},
+										"linkedServiceName": {
+											"referenceName": "LS_AzureDatabricks",
+											"type": "LinkedServiceReference"
+										}
+									}
+								]
+							}
+						},
+						{
+							"name": "WEB_NotifyTableFailure",
+							"type": "WebActivity",
+							"dependsOn": [
+								{
+									"activity": "CP_SqlToBronze",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.00:05:00",
+								"retry": 1,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"method": "POST",
+								"headers": {
+									"Content-Type": "application/json"
+								},
+								"url": {
+									"value": "@pipeline().parameters.p_notify_url",
+									"type": "Expression"
+								},
+								"body": {
+									"value": "@concat('{\"level\":\"table\",\"pipeline\":\"', pipeline().Pipeline, '\",\"runId\":\"', pipeline().RunId, '\",\"table\":\"', item().source_schema, '.', item().source_table, '\",\"message\":\"Copy to bronze failed\"}')",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "WEB_NotifyPipelineFailure",
+				"type": "WebActivity",
+				"dependsOn": [
+					{
+						"activity": "FE_MigrateEachTable",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.00:05:00",
+					"retry": 1,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"method": "POST",
+					"headers": {
+						"Content-Type": "application/json"
+					},
+					"url": {
+						"value": "@pipeline().parameters.p_notify_url",
+						"type": "Expression"
+					},
+					"body": {
+						"value": "@concat('{\"level\":\"pipeline\",\"pipeline\":\"', pipeline().Pipeline, '\",\"runId\":\"', pipeline().RunId, '\",\"status\":\"FAILED\"}')",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "WEB_NotifyPipelineSuccess",
+				"type": "WebActivity",
+				"dependsOn": [
+					{
+						"activity": "FE_MigrateEachTable",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.00:05:00",
+					"retry": 1,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"method": "POST",
+					"headers": {
+						"Content-Type": "application/json"
+					},
+					"url": {
+						"value": "@pipeline().parameters.p_notify_url",
+						"type": "Expression"
+					},
+					"body": {
+						"value": "@concat('{\"level\":\"pipeline\",\"pipeline\":\"', pipeline().Pipeline, '\",\"runId\":\"', pipeline().RunId, '\",\"status\":\"SUCCEEDED\",\"runDate\":\"', pipeline().parameters.p_run_date, '\"}')",
+						"type": "Expression"
+					}
+				}
+			}
+		],
+		"parameters": {
+			"p_control_schema": {
+				"type": "String",
+				"defaultValue": "dbo"
+			},
+			"p_control_table": {
+				"type": "String",
+				"defaultValue": "MigrationControl"
+			},
+			"p_landing_container": {
+				"type": "String",
+				"defaultValue": "bronze"
+			},
+			"p_run_date": {
+				"type": "String",
+				"defaultValue": "2026-09-21"
+			},
+			"p_notify_url": {
+				"type": "String",
+				"defaultValue": "https://hooks.example.com/adf/failure"
+			},
+			"p_databricks_repo": {
+				"type": "String",
+				"defaultValue": "/Repos/flowx-demo"
+			}
+		},
+		"variables": {
+			"v_pipeline_status": {
+				"type": "String"
+			}
+		},
+		"folder": {
+			"name": "Migration/Ingestion"
+		},
+		"annotations": [
+			"flowx-demo",
+			"metadata-driven",
+			"lookup-foreach-copy",
+			"rearchitecture-in-flight"
+		],
+		"lastPublishTime": "2026-09-22T03:25:35Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

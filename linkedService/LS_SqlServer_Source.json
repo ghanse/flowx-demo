@@ -1,0 +1,17 @@
+{
+	"name": "LS_SqlServer_Source",
+	"type": "Microsoft.DataFactory/factories/linkedservices",
+	"properties": {
+		"type": "AzureSqlDatabase",
+		"annotations": [
+			"flowx-demo",
+			"source-system:sqlserver"
+		],
+		"typeProperties": {
+			"connectionString": "Integrated Security=False;Encrypt=True;Connection Timeout=30;Data Source=ghansen-flowx-sql-e70c.database.windows.net;Initial Catalog=flowxsource;User ID=flowxadmin",
+			"password": {
+				"type": "AzureKeyVaultSecret"
+			}
+		}
+	}
+}

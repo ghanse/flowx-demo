@@ -1,0 +1,15 @@
+{
+	"name": "LS_Adls_Bronze",
+	"type": "Microsoft.DataFactory/factories/linkedservices",
+	"properties": {
+		"type": "AzureBlobFS",
+		"annotations": [
+			"flowx-demo",
+			"sink:adls-gen2",
+			"layer:bronze"
+		],
+		"typeProperties": {
+			"url": "https://ghansenflowxbronze.dfs.core.windows.net"
+		}
+	}
+}
