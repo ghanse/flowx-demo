@@ -1,0 +1,15 @@
+{
+	"name": "ghansen-flowx-adf",
+	"properties": {
+		"trustModeClaimForMi": {
+			"value": "Disabled",
+			"editable": true
+		}
+	},
+	"location": "eastus",
+	"identity": {
+		"type": "SystemAssigned",
+		"principalId": "1239900a-7084-4ba4-9891-4b5fcdee4ddd",
+		"tenantId": "bf465dc7-3bc8-4944-b018-092572b5c20d"
+	}
+}

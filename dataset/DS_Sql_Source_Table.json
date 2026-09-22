@@ -1,0 +1,37 @@
+{
+	"name": "DS_Sql_Source_Table",
+	"properties": {
+		"linkedServiceName": {
+			"referenceName": "LS_SqlServer_Source",
+			"type": "LinkedServiceReference"
+		},
+		"parameters": {
+			"schemaName": {
+				"type": "String"
+			},
+			"tableName": {
+				"type": "String"
+			}
+		},
+		"folder": {
+			"name": "Source/SQL"
+		},
+		"annotations": [
+			"flowx-demo",
+			"source-table",
+			"parameterized"
+		],
+		"type": "AzureSqlTable",
+		"typeProperties": {
+			"schema": {
+				"value": "@dataset().schemaName",
+				"type": "Expression"
+			},
+			"table": {
+				"value": "@dataset().tableName",
+				"type": "Expression"
+			}
+		}
+	},
+	"type": "Microsoft.DataFactory/factories/datasets"
+}
